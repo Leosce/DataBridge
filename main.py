@@ -5,6 +5,9 @@ from typing import Dict, Any, Tuple, Optional, List, AsyncGenerator
 from groq import Groq
 from openai import OpenAI
 from google import genai
+import openpyxl
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 class ExcelTools(BaseModel):
     """
@@ -64,10 +67,6 @@ class ExcelTools(BaseModel):
 
         path = self._get_path(file_key, self.target_dir)
         try:
-            import openpyxl
-            from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
-            from openpyxl.utils import get_column_letter
-
             date_cols = [c for c in df.columns if "date" in c.lower()]
             for col in date_cols:
                 df[col] = pd.to_datetime(df[col]).dt.date
