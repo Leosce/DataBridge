@@ -250,6 +250,22 @@ class ExcelTools(BaseModel):
         except Exception as e:
             return f"Insert Error: {str(e)}"
 
+    def add_records(self, file_key: str, records: List[Dict[str, Any]]) -> str:
+        """Inserts multiple rows in a single operation."""
+        df, err = self._load_data(file_key)
+        if err: return err
+        try:
+            clean_records = [{k.strip('`'): v for k, v in row.items()} for row in records]
+            for record in clean_records:
+                invalid = [k for k in record if k not in df.columns]
+                if invalid:
+                    return f"Insert Error: Unknown columns {invalid}. Available: {list(df.columns)}"
+            new_rows = pd.DataFrame(clean_records)
+            df = pd.concat([df, new_rows], ignore_index=True)
+            return self._save_data(file_key, df) + f" Added {len(clean_records)} row(s)."
+        except Exception as e:
+            return f"Insert Error: {str(e)}"
+
     def update_record(self, file_key: str, row_index: int, updates: Dict[str, Any]) -> str:
         df, err = self._load_data(file_key)
         if err: return err
@@ -336,6 +352,9 @@ STRICT RULES:
 3. Column names with spaces MUST use backticks in query_str.
    Example: query_data('properties', "`List Price` > 500000")
 4. Always call get_schema first if you don't know the column names.
+5. ALWAYS use positional arguments in tool calls, never keyword arguments.
+   CORRECT:   add_records('properties', [{'Listing ID': 'X', 'City': 'Y'}])
+   INCORRECT: add_records(file_key='properties', records=[{'Listing ID': 'X'}])
 
 FORMAT:
 Thought: <your reasoning>
@@ -351,6 +370,11 @@ Available Tools:
 - query_data(file_key, query_str): Filter rows using pandas query syntax.
 
 - add_record(file_key, data): Insert a new row as a dictionary.
+
+- add_records(file_key, records): Insert multiple rows at once as a list of dictionaries.
+  Use this instead of calling add_record multiple times.
+  Example: add_records('properties', [{'Listing ID': 'DUMMY-001', 'City': 'Austin', ...}, {'Listing ID': 'DUMMY-002', ...}])
+  ALWAYS prefer this over multiple add_record calls when inserting more than one row.
 
 - update_record(file_key, row_index, updates): Update a row by index.
 
@@ -372,18 +396,6 @@ Available Tools:
   Example: summarize_data('marketing', 'Channel', 'Revenue Generated')
   Use this instead of query_data when the user asks "which X has highest/average/total Y".
   
-- compute_and_query(file_key, new_column, formula, query_str, top_n, ascending):
-  Use when the user asks about calculated metrics like ROI, profit margin, or any derived value.
-  formula uses pandas eval syntax e.g. '`Revenue Generated` / `Budget Allocated`'
-  Example for 3 worst ROI: compute_and_query('marketing', 'ROI', '`Revenue Generated` / `Budget Allocated`', top_n=3, ascending=True)
-  Example for 3 best ROI:  compute_and_query('marketing', 'ROI', '`Revenue Generated` / `Budget Allocated`', top_n=3, ascending=False)
-  Use this instead of query_data for any question involving division, multiplication, or derived columns.
-  
-- delete_records(file_key, row_indices): Delete multiple records at once by passing a list of indices.
-  Use this instead of calling delete_record multiple times.
-  Example: delete_records('properties', [311, 403, 469, 503, 802])
-  ALWAYS prefer this over multiple delete_record calls when deleting more than one row.
-  
 - compute_and_query(file_key, new_column, formula, top_n, ascending, query_str):
   Use when the user asks about calculated metrics like ROI, profit margin, or any derived value.
   formula uses pandas eval syntax e.g. '`Revenue Generated` / `Budget Allocated`'
@@ -391,6 +403,14 @@ Available Tools:
   Example for 3 worst ROI:       compute_and_query('marketing', 'ROI', '`Revenue Generated` / `Budget Allocated`', top_n=3, ascending=True)
   Example for 3 best ROI:        compute_and_query('marketing', 'ROI', '`Revenue Generated` / `Budget Allocated`', top_n=3, ascending=False)
   ALWAYS use keyword arguments for top_n, ascending, and query_str to avoid conflicts.
+  Use this instead of query_data for any question involving division, multiplication, or derived columns.
+  IMPORTANT: The first column of the result is the exact DataFrame row index. Use these indices directly
+  in delete_record, delete_records, or update_record. Do NOT call get_row_index afterward.
+
+- delete_records(file_key, row_indices): Delete multiple records at once by passing a list of indices.
+  Use this instead of calling delete_record multiple times.
+  Example: delete_records('properties', [311, 403, 469, 503, 802])
+  ALWAYS prefer this over multiple delete_record calls when deleting more than one row.
   
 Additional Thoughts:
 - For "is X proportional to Y across groups" questions:
@@ -524,6 +544,7 @@ class AIAgent:
                 "summarize_data": self.tools.summarize_data,
                 "compute_and_query": self.tools.compute_and_query,
                 "add_record": self.tools.add_record,
+                "add_records": self.tools.add_records,
                 "update_record": self.tools.update_record,
                 "delete_record": self.tools.delete_record,
                 "delete_missing_rows": self.tools.delete_missing_rows,
@@ -536,9 +557,23 @@ class AIAgent:
             raw_args = raw_args.rstrip(")")
 
             # Write operations — show preview first
-            if name in ("add_record", "update_record", "delete_record", "delete_missing_rows"):
-                
-                if name == "add_record":
+            if name in ("add_record", "add_records", "update_record", "delete_record", "delete_missing_rows"):
+
+                if name == "add_records":
+                    file_key, records = eval(f"({raw_args})", {"tool_map": tool_map})
+                    df, _ = self.tools._load_data(file_key)
+                    preview = (
+                        f"**Operation:** Add {len(records)} record(s) to `{file_key}`\n\n"
+                        f"**New records:**\n{pd.DataFrame(records).to_markdown(index=False)}\n\n"
+                        f"**Current row count:** {len(df)} → **After:** {len(df) + len(records)}"
+                    )
+                    return self._preview_and_pend(
+                        "Add Records",
+                        tool_map[name], (), {"file_key": file_key, "records": records},
+                        preview
+                    )
+
+                elif name == "add_record":
                     file_key, data = eval(f"({raw_args})", {"tool_map": tool_map})
                     df, _ = self.tools._load_data(file_key)
                     preview = (
