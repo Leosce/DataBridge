@@ -99,9 +99,9 @@ class ExcelTools(BaseModel):
                 cell.font = header_font
                 cell.alignment = header_align
 
-            for row_idx, row in df.iterrows():
+            for sheet_row, (row_idx, row) in enumerate(df.iterrows(), start=1):
                 for col_idx, (col_name, value) in enumerate(row.items(), 1):
-                    cell = ws.cell(row=row_idx + 2, column=col_idx, value=value)
+                    cell = ws.cell(row=sheet_row + 1, column=col_idx, value=value)
                     cell.alignment = Alignment(horizontal="center")
 
                     if col_name in date_cols:
