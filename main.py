@@ -472,6 +472,7 @@ class AIAgent:
             func, args, kwargs = self._pending_operation
             result = func(*args, **kwargs)
             self._pending_operation = None
+            self.history.append({"role": "system", "content": "Operation completed successfully. If the original task is fully done, respond with a Final Answer summarizing what was accomplished."})
             return result
         return None
 
@@ -557,7 +558,7 @@ class AIAgent:
             raw_args = raw_args.rstrip(")")
 
             # Write operations — show preview first
-            if name in ("add_record", "add_records", "update_record", "delete_record", "delete_missing_rows"):
+            if name in ("add_record", "add_records", "update_record", "delete_record", "delete_missing_rows", "delete_records"):
 
                 if name == "add_records":
                     file_key, records = eval(f"({raw_args})", {"tool_map": tool_map})
