@@ -4,6 +4,8 @@ A Chainlit-based AI assistant for querying and editing Excel files using a ReAct
 
 ---
 
+<img width="1920" height="1080" alt="2026-04-21 00-47-24" src="https://github.com/user-attachments/assets/09081323-171c-4191-8bab-d23dd6e00cca" />
+
 ## Prerequisites
 
 - Python 3.9+
