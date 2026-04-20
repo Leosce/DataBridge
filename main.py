@@ -6,8 +6,6 @@ from groq import Groq
 from openai import OpenAI
 from google import genai
 
-# --- Tool Layer: Data Management [cite: 4, 13] ---
-
 class ExcelTools(BaseModel):
     """
     Handles all CRUD operations on Excel files using a priority-based 
@@ -16,7 +14,6 @@ class ExcelTools(BaseModel):
     source_dir: str = Field(default="data_original", description="Folder for raw data")
     target_dir: str = Field(default="data_modified", description="Folder for saved changes")
     
-    # Required file names from the task description [cite: 7, 9]
     files: Dict[str, str] = Field(default_factory=lambda: {
     "properties": "Real Estate Listings.xlsx",
     "marketing": "Marketing Campaigns.xlsx"
@@ -39,8 +36,6 @@ class ExcelTools(BaseModel):
             
         try:
             df = pd.read_excel(path)
-
-            # Clean currency columns → numeric
             currency_cols = [c for c in df.columns if any(x in c for x in
                             ["Price", "Budget", "Spent", "Revenue", "Amount"])]
             for col in currency_cols:
@@ -49,8 +44,6 @@ class ExcelTools(BaseModel):
                         df[col].astype(str).str.replace(r'[\$,]', '', regex=True),
                         errors='coerce'
                     )
-
-            # Clean integer columns → numeric
             int_cols = [c for c in df.columns if any(x in c for x in
                     ["Impressions", "Clicks", "Conversions", "Bedrooms",
                         "Bathrooms", "Footage", "Year"])]
@@ -186,17 +179,14 @@ class ExcelTools(BaseModel):
         df, err = self._load_data(file_key)
         if err: return err
         try:
-            # Only strip if the entire query is wrapped in matching quotes
             clean_query = query_str
             if (query_str.startswith("'") and query_str.endswith("'")) or \
             (query_str.startswith('"') and query_str.endswith('"')):
                 clean_query = query_str[1:-1]
 
-            # Normalize curly quotes
             clean_query = clean_query.replace('\u201c', '"').replace('\u201d', '"')
             clean_query = clean_query.replace('\u2018', "'").replace('\u2019', "'")
 
-            # Auto-wrap spaced column names with backticks
             for col in df.columns:
                 if " " in col and col in clean_query and f"`{col}`" not in clean_query:
                     clean_query = clean_query.replace(col, f"`{col}`")
@@ -576,8 +566,6 @@ class AIAgent:
                         tool_map[name], (), {"file_key": file_key, "row_indices": row_indices},
                         preview
                     )
-
-            # Read operations — execute immediately
             return str(eval(f"tool_map['{name}']({raw_args})"))
 
         except Exception as e:
@@ -593,7 +581,7 @@ class AIAgent:
             
             response = self._call_llm(full_prompt)
             if not response:
-                yield "⚠️ No response from model."
+                yield "No response from model."
                 break
 
             lines = response.split("\n")
@@ -626,10 +614,10 @@ class AIAgent:
                 # If it's a confirmation request, yield it and pause the loop
                 if observation.startswith("__CONFIRM__:"):
                     yield observation
-                    return  # Pause — app.py will call confirm_pending() or cancel_pending()
+                    return  # Pause, app.py will call confirm_pending() or cancel_pending()
 
                 self.history.append({"role": "system", "content": f"Observation: {observation}"})
-                yield f"**⚙️ Observation:**\n{observation}"
+                yield f"**Observation:**\n{observation}"
 
             else:
                 self.history.append({"role": "assistant", "content": response})
