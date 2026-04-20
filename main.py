@@ -460,6 +460,54 @@ class AIAgent:
         self._pending_operation = None
         self._last_observation = "Operation cancelled by user."
 
+    async def continue_after_confirm(self) -> AsyncGenerator[str, None]:
+        """Resume the ReAct loop after user confirms a write operation."""
+        for _ in range(5):
+            full_prompt = SYSTEM_PROMPT + "\n" + "\n".join(
+                [f"{m['role']}: {m['content']}" for m in self.history]
+            )
+            response = self._call_llm(full_prompt)
+            if not response:
+                yield "No response from model."
+                break
+
+            lines = response.split("\n")
+            truncated_lines = []
+            for line in lines:
+                truncated_lines.append(line)
+                if line.strip().startswith("Action:") and "(" in line:
+                    break
+            response = "\n".join(truncated_lines)
+
+            yield response
+
+            if "Final Answer:" in response:
+                self.history.append({"role": "assistant", "content": response})
+                break
+
+            elif "Action:" in response:
+                action_line = next(
+                    (line for line in response.split("\n") if line.strip().startswith("Action:") and "(" in line),
+                    None
+                )
+                if not action_line or "none" in action_line.lower():
+                    self.history.append({"role": "assistant", "content": response})
+                    break
+
+                obs = self._execute_tool(action_line)
+                self.history.append({"role": "assistant", "content": response})
+
+                if obs.startswith("__CONFIRM__:"):
+                    yield obs
+                    return
+
+                self.history.append({"role": "system", "content": f"Observation: {obs}"})
+                yield f"**Observation:**\n{obs}"
+
+            else:
+                self.history.append({"role": "assistant", "content": response})
+                break
+
     def _preview_and_pend(self, operation_name: str, func, args: tuple, kwargs: dict, preview_text: str) -> str:
         """Stores operation as pending and returns a confirmation request signal."""
         self._pending_operation = (func, args, kwargs)
